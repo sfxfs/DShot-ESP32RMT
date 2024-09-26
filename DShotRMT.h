@@ -1,6 +1,7 @@
 #ifndef _DSHOTRMT_h
 #define _DSHOTRMT_h
 
+#include <freertos/FreeRTOS.h>
 #include <driver/rmt_tx.h>
 
 #include "dshot_rmt_encoder.h"
@@ -11,9 +12,19 @@
 #define DSHOT_RMT_RESOLUTION_HZ 40000000 // 40MHz resolution, DSHot protocol needs a relative high resolution
 #endif
 
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+#define MAX_BLOCKS 64
+#else
+#define MAX_BLOCKS 48
+#endif
+
+// DSHOT Timings
+#define DSHOT_ARM_DELAY 3200
+
 // Constants related to the DShot protocol
-constexpr auto DSHOT_THROTTLE_MIN = 48;
-constexpr auto DSHOT_THROTTLE_MAX = 2047;
+#define DSHOT_THROTTLE_MIN 48
+#define DSHOT_THROTTLE_MAX 2047
+#define DSHOT_THROTTLE_RANGE (DSHOT_THROTTLE_MAX - DSHOT_THROTTLE_MIN)
 
 // Enumeration for the DShot mode
 typedef enum dshot_mode_e
@@ -31,8 +42,6 @@ class DShotRMT
 public:
     // Constructor for the DShotRMT class
     DShotRMT(gpio_num_t gpio, dshot_mode_e dshot_mode);
-    // DShotRMT(uint8_t pin, uint8_t channel);
-    // DShotRMT(uint8_t pin);
 
     // Destructor for the DShotRMT class
     ~DShotRMT();
@@ -43,12 +52,11 @@ public:
     // indicating whether or not the initialization was successful.
     void begin(bool is_bidirectional = false);
 
-    // The sendThrottleValue() function sends a DShot packet with a given
+    // The sendThrottle() function sends a DShot packet with a given
     // throttle value (between 48 and 2047)
-    void sendThrottleValue(uint16_t throttle_value);
+    void sendThrottle(uint16_t throttle_value);
 
 private:
-    // rmt_item32_t dshot_tx_rmt_item[DSHOT_PACKET_LENGTH]; // An array of RMT items used to send a DShot packet.
     rmt_tx_channel_config_t rmt_tx_channel_config; // The RMT configuration used for sending DShot packets.
     rmt_channel_handle_t rmt_tx_channel = NULL;
     rmt_encoder_handle_t dshot_encoder = NULL;
@@ -56,6 +64,9 @@ private:
     dshot_rmt_throttle_t throttle;
     dshot_rmt_encoder_config_t encoder_config;
     bool enabled = false;
+
+    void send(uint16_t value, int loop_count = 0);
+    void sendTicks(uint16_t value, TickType_t ticks);
 };
 
 #endif

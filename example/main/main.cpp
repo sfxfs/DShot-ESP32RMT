@@ -8,29 +8,41 @@
 
 static const char *TAG = "example";
 
-DShotRMT motor1(GPIO_NUM_4, DSHOT600);
+DShotRMT motor(GPIO_NUM_4, DSHOT600);
+
+static void rampThrottle(int start, int stop, int step)
+{
+    if (step == 0)
+        return;
+
+    for (int i = start; step > 0 ? i < stop : i > stop; i += step)
+    {
+        motor.sendThrottle(i);
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    motor.sendThrottle(stop);
+}
 
 extern "C" void app_main(void)
 {
-    ESP_LOGI(TAG, "Launching APP");
+    ESP_LOGI(TAG, "Initializing DShot RMT...");
+    motor.begin();
 
-    // Arm Motors
-    motor1.begin();
-
+    ESP_LOGI(TAG, "Ramping throttle...");
     int taskCounter = 0;
-
+    int rampMax = DSHOT_THROTTLE_RANGE * 0.2;
     while (true)
     {
-        motor1.sendThrottleValue(100);
+        rampThrottle(DSHOT_THROTTLE_MIN, rampMax, 1);
+        rampThrottle(rampMax, DSHOT_THROTTLE_MIN, -1);
 
         taskCounter++;
 
-        if (taskCounter > 10)
+        if (taskCounter >= 6)
         {
-            motor1.~DShotRMT();
             break;
         }
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
     }
+
+    ESP_LOGW(TAG, "Exiting");
 }
