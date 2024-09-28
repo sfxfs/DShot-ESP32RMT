@@ -1,5 +1,4 @@
-#ifndef _DSHOTRMT_h
-#define _DSHOTRMT_h
+#pragma once
 
 #include <freertos/FreeRTOS.h>
 #include <driver/rmt_tx.h>
@@ -33,32 +32,33 @@ typedef enum dshot_mode_e
     DSHOT150,
     DSHOT300,
     DSHOT600,
-    DSHOT1200
+    DSHOT1200,
+    DSHOT300_BIDIRECTIONAL,
+    DSHOT600_BIDIRECTIONAL,
+    DSHOT1200_BIDIRECTIONAL
 } dshot_mode_t;
 
 // The main DShotRMT class
 class DShotRMT
 {
 public:
-    // Constructor for the DShotRMT class
+    // Constructor for the DShotRMT class with
+    // a given DShot mode
     DShotRMT(gpio_num_t gpio, dshot_mode_e dshot_mode);
 
     // Destructor for the DShotRMT class
     ~DShotRMT();
 
-    // The begin() function initializes the DShotRMT class with
-    // a given DShot mode (DSHOT_OFF, DSHOT150, DSHOT300, DSHOT600, DSHOT1200)
-    // and a bidirectional flag. It returns a boolean value
-    // indicating whether or not the initialization was successful.
-    void begin(bool is_bidirectional = false);
+    // The begin() function enalbes the DShotRMT class
+    void begin();
 
     // The sendThrottle() function sends a DShot packet with a given
     // throttle value (between 48 and 2047)
     void sendThrottle(uint16_t throttle_value);
 
 private:
-    rmt_tx_channel_config_t rmt_tx_channel_config; // The RMT configuration used for sending DShot packets.
     rmt_channel_handle_t rmt_tx_channel = NULL;
+    rmt_channel_handle_t rmt_rx_channel = NULL;
     rmt_encoder_handle_t dshot_encoder = NULL;
     rmt_transmit_config_t tx_config;
     dshot_rmt_throttle_t throttle;
@@ -68,5 +68,3 @@ private:
     void send(uint16_t value, int loop_count = 0);
     void sendTicks(uint16_t value, TickType_t ticks);
 };
-
-#endif

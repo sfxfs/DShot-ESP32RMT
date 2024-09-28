@@ -1,22 +1,19 @@
-/*
- * SPDX-FileCopyrightText: 2021-2022 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
-#include "esp_check.h"
 #include "dshot_rmt_encoder.h"
+
+#include <esp_check.h>
 
 static const char *TAG = "dshot_encoder";
 
 /**
  * @brief Type of Dshot ESC frame
  */
-typedef union {
-    struct {
-        uint16_t crc: 4;       /*!< CRC checksum */
-        uint16_t telemetry: 1; /*!< Telemetry request */
-        uint16_t throttle: 11; /*!< Throttle value */
+typedef union
+{
+    struct
+    {
+        uint16_t crc : 4;       /*!< CRC checksum */
+        uint16_t telemetry : 1; /*!< Telemetry request */
+        uint16_t throttle : 11; /*!< Throttle value */
     };
     uint16_t val;
 } dshot_frame_t;
@@ -25,23 +22,45 @@ typedef union {
 _Static_assert(sizeof(dshot_frame_t) == 0x02, "Invalid size of dshot_frame_t structure");
 #endif
 
-typedef struct {
-    rmt_encoder_t base;
-    rmt_encoder_t *bytes_encoder;
-    rmt_encoder_t *copy_encoder;
-    rmt_symbol_word_t dshot_delay_symbol;
-    int state;
+typedef struct
+{
+    rmt_encoder_t base;                   // the base "class" declares the standard encoder interface
+    rmt_encoder_t *bytes_encoder;         // bytes_encoder to encode the dshot data
+    rmt_encoder_t *copy_encoder;          // copy_encoder to encode the delay symbol
+    rmt_symbol_word_t dshot_delay_symbol; // Delay between frames in RMT representation
+    int state;                            // the current encoding state, i.e., we are in which encoding phase
+    bool bidirectional;
 } dshot_rmt_encoder_t;
 
-static void make_dshot_frame(dshot_frame_t *frame, uint16_t throttle, bool telemetry)
+static void make_dshot_frame(dshot_frame_t *frame, uint16_t throttle, bool telemetry, bool bidirectional)
 {
     frame->throttle = throttle;
     frame->telemetry = telemetry;
     uint16_t val = frame->val;
-    uint8_t crc = ((val ^ (val >> 4) ^ (val >> 8)) & 0xF0) >> 4;;
-    frame->crc = crc;
+
+    // CRC example for throttle = 1046, telemetry = false
+    // value  = 100000101100
+    // (>>4)  = 000010000010 # right shift value by 4
+    // (^)    = 100010101110 # XOR with value
+    // (>>8)  = 000000001000 # right shift value by 8
+    // (^)    = 100010100110 # XOR with previous XOR
+    // # if bidirectional
+    // (~)    = 011101011001 # Invert
+    // (0x0F) = 000000001111 # Mask 0x0F
+    // (&)    = 000000001001 # CRC
+    // # else
+    // (0x0F) = 000000001111 # Mask 0x0F
+    // (&)    = 000000000110 # CRC
+
+    uint8_t crc = val ^ (val >> 4) ^ (val >> 8);
+    if (bidirectional)
+        crc = ~crc; // Invert
+    crc = crc & 0xF0;
+
+    frame->crc = crc >> 4; // right shift by 4 to convert to big endian
+
+    // change the endian (esp32 little-endian to dshot big endian)
     val = frame->val;
-    // change the endian
     frame->val = ((val & 0xFF) << 8) | ((val & 0xFF00) >> 8);
 }
 
@@ -58,27 +77,32 @@ static size_t rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle_t 
     // convert user data into dshot frame
     dshot_rmt_throttle_t *throttle = (dshot_rmt_throttle_t *)primary_data;
     dshot_frame_t frame = {};
-    make_dshot_frame(&frame, throttle->throttle, throttle->telemetry_req);
+    make_dshot_frame(&frame, throttle->throttle, throttle->telemetry_req, dshot_encoder->bidirectional);
 
-    switch (dshot_encoder->state) {
+    switch (dshot_encoder->state)
+    {
     case 0: // send the dshot frame
         encoded_symbols += bytes_encoder->encode(bytes_encoder, channel, &frame, sizeof(frame), &session_state);
-        if (session_state & RMT_ENCODING_COMPLETE) {
+        if (session_state & RMT_ENCODING_COMPLETE)
+        {
             dshot_encoder->state = 1; // switch to next state when current encoding session finished
         }
-        if (session_state & RMT_ENCODING_MEM_FULL) {
+        if (session_state & RMT_ENCODING_MEM_FULL)
+        {
             state |= RMT_ENCODING_MEM_FULL;
             goto out; // yield if there's no free space for encoding artifacts
         }
     // fall-through
-    case 1:
+    case 1: // send dshot post delay
         encoded_symbols += copy_encoder->encode(copy_encoder, channel, &dshot_encoder->dshot_delay_symbol,
                                                 sizeof(rmt_symbol_word_t), &session_state);
-        if (session_state & RMT_ENCODING_COMPLETE) {
+        if (session_state & RMT_ENCODING_COMPLETE)
+        {
             state |= RMT_ENCODING_COMPLETE;
             dshot_encoder->state = RMT_ENCODING_RESET; // switch to next state when current encoding session finished
         }
-        if (session_state & RMT_ENCODING_MEM_FULL) {
+        if (session_state & RMT_ENCODING_MEM_FULL)
+        {
             state |= RMT_ENCODING_MEM_FULL;
             goto out; // yield if there's no free space for encoding artifacts
         }
@@ -124,6 +148,8 @@ esp_err_t rmt_new_dshot_esc_encoder(const dshot_rmt_encoder_config_t *config, rm
         .duration1 = delay_ticks / 2,
     };
     dshot_encoder->dshot_delay_symbol = dshot_delay_symbol;
+    dshot_encoder->bidirectional = config->bidirectional;
+
     // different dshot protocol have its own timing requirements,
     float period_ticks = (float)config->resolution / config->baud_rate;
     // 1 and 0 is represented by a 74.850% and 37.425% duty cycle respectively
@@ -152,11 +178,14 @@ esp_err_t rmt_new_dshot_esc_encoder(const dshot_rmt_encoder_config_t *config, rm
     *ret_encoder = &dshot_encoder->base;
     return ESP_OK;
 err:
-    if (dshot_encoder) {
-        if (dshot_encoder->bytes_encoder) {
+    if (dshot_encoder)
+    {
+        if (dshot_encoder->bytes_encoder)
+        {
             rmt_del_encoder(dshot_encoder->bytes_encoder);
         }
-        if (dshot_encoder->copy_encoder) {
+        if (dshot_encoder->copy_encoder)
+        {
             rmt_del_encoder(dshot_encoder->copy_encoder);
         }
         free(dshot_encoder);

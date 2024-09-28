@@ -8,7 +8,7 @@
 
 static const char *TAG = "example";
 
-DShotRMT motor(GPIO_NUM_4, DSHOT600);
+DShotRMT motor(GPIO_NUM_4, DSHOT600_BIDIRECTIONAL);
 
 static void rampThrottle(int start, int stop, int step)
 {
@@ -43,6 +43,7 @@ extern "C" void app_main(void)
             break;
         }
     }
+    motor.sendThrottle(0);
 
     ESP_LOGW(TAG, "Exiting");
 }
