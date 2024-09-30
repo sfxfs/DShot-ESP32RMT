@@ -1,0 +1,5 @@
+## IDF Component Manager Manifest File
+dependencies:
+  DShot-ESP32RMT:
+    version: '*'
+    override_path: '../../'
