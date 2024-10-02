@@ -1,7 +1,9 @@
 #pragma once
 
-#include <freertos/FreeRTOS.h>
+#include <driver/rmt_rx.h>
 #include <driver/rmt_tx.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
 #include "dshot_rmt_encoder.h"
 
@@ -24,6 +26,7 @@
 #define DSHOT_THROTTLE_MIN 48
 #define DSHOT_THROTTLE_MAX 2047
 #define DSHOT_THROTTLE_RANGE (DSHOT_THROTTLE_MAX - DSHOT_THROTTLE_MIN)
+static constexpr uint32_t INVALID_TELEMETRY_VALUE = 0xffff;
 
 // Enumeration for the DShot mode
 typedef enum dshot_mode_e
@@ -42,9 +45,8 @@ typedef enum dshot_mode_e
 class DShotRMT
 {
 public:
-    // Constructor for the DShotRMT class with
-    // a given DShot mode
-    DShotRMT(gpio_num_t gpio, dshot_mode_e dshot_mode);
+    // Constructor for the DShotRMT class with a given DShot mode
+    DShotRMT(gpio_num_t gpio, dshot_mode_t dshot_mode);
 
     // Destructor for the DShotRMT class
     ~DShotRMT();
@@ -54,17 +56,38 @@ public:
 
     // The sendThrottle() function sends a DShot packet with a given
     // throttle value (between 48 and 2047)
-    void sendThrottle(uint16_t throttle_value);
+    uint32_t sendThrottle(uint16_t throttle_value);
+
+    static float getErpmToRpmRatio(int poles)
+    {
+        static constexpr float ERPM_PER_LSB = 100.0f;
+        return ERPM_PER_LSB / (poles / 2.0f);
+    }
 
 private:
-    rmt_channel_handle_t rmt_tx_channel = NULL;
+    gpio_num_t gpio_num;
     rmt_channel_handle_t rmt_rx_channel = NULL;
+    rmt_channel_handle_t rmt_tx_channel = NULL;
     rmt_encoder_handle_t dshot_encoder = NULL;
+    rmt_receive_config_t rx_config;
     rmt_transmit_config_t tx_config;
+    QueueHandle_t rx_queue;
     dshot_rmt_throttle_t throttle;
     dshot_rmt_encoder_config_t encoder_config;
     bool enabled = false;
+    rmt_symbol_word_t rx_buf[MAX_BLOCKS];
+    bool mode = false;
+    bool is_bidirectional = false;
+    uint16_t telemetry_bit_len_ticks;
+    uint32_t telemetry_errors = 0;
 
-    void send(uint16_t value, int loop_count = 0);
+    void send(uint16_t value);
     void sendTicks(uint16_t value, TickType_t ticks);
+    uint32_t receive();
+    void modeTx();
+    void modeRx();
+    void enableRx();
+    void disableRx();
+    static bool rxDoneCallback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data);
+    static bool txDoneCallback(rmt_channel_handle_t channel, const rmt_tx_done_event_data_t *edata, void *user_data);
 };
