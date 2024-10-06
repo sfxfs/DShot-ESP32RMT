@@ -54,9 +54,15 @@ public:
     // The begin() function enalbes the DShotRMT class
     void begin();
 
-    // The sendThrottle() function sends a DShot packet with a given
-    // throttle value (between 48 and 2047)
-    uint32_t sendThrottle(uint16_t throttle_value);
+    // Sends a DShot packet with a given throttle value (between 48 and 2047). (non-blocking)
+    void sendThrottle(uint16_t throttle_value);
+
+    // Gets the last received eRPM value (non-blocking)
+    uint32_t getErpm();
+
+    // Busy-waits for telemetry response of the last sendThrottle(), and sets the received eRPM value.
+    // If no telemetry response is received within the expected time period, the function times out.
+    esp_err_t waitForErpm(uint32_t &erpm);
 
     static float getErpmToRpmRatio(int poles)
     {
@@ -71,23 +77,26 @@ private:
     rmt_encoder_handle_t dshot_encoder = NULL;
     rmt_receive_config_t rx_config;
     rmt_transmit_config_t tx_config;
-    QueueHandle_t rx_queue;
     dshot_rmt_throttle_t throttle;
     dshot_rmt_encoder_config_t encoder_config;
     bool enabled = false;
     rmt_symbol_word_t rx_buf[MAX_BLOCKS];
     bool mode = false;
     bool is_bidirectional = false;
-    uint16_t telemetry_bit_len_ticks;
-    uint32_t telemetry_errors = 0;
+    uint16_t telemetry_bit_len_ticks; // Length of one telemetry bit in RMT ticks
+    uint32_t telemetry_timeout_us;    // Maximum time for one complete dhsot bidirectional send+receive cycle
+    uint32_t telemetry_gcr = 0;       // Last recevied telemetry frame, GCR encoded
+    bool telemetry_received = false;
 
     void send(uint16_t value);
     void sendTicks(uint16_t value, TickType_t ticks);
-    uint32_t receive();
     void modeTx();
     void modeRx();
     void enableRx();
     void disableRx();
-    static bool rxDoneCallback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data);
-    static bool txDoneCallback(rmt_channel_handle_t channel, const rmt_tx_done_event_data_t *edata, void *user_data);
+    static bool rxDoneCallback_ISR(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data);
+    static bool txDoneCallback_ISR(rmt_channel_handle_t channel, const rmt_tx_done_event_data_t *edata, void *user_data);
+    static uint32_t extractTelemetryGcr(rmt_symbol_word_t *rmt_symbols, size_t symbol_num, uint32_t bit_len_ticks);
+    static uint32_t convertGcrToErpmData(uint32_t value);
+    static uint32_t convertErpmDataToErpmPeriod(uint32_t value);
 };
