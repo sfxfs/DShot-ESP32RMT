@@ -51,7 +51,7 @@ DShotRMT::DShotRMT(gpio_num_t gpio, dshot_mode_t dshot_mode)
 
         uint32_t throttle_frame_length = ((float)1000000 / baudrate * 16);
         uint32_t telemetry_frame_length = ((float)1000000 / telem_baudrate * 21);
-        telemetry_timeout_us = throttle_frame_length + 30 + telemetry_frame_length + 25; // throttle frame + receive delay + telemetry frame + ISR delay;
+        telemetry_timeout_us = throttle_frame_length + 30 + telemetry_frame_length + 40; // throttle frame + receive delay + telemetry frame + RMT delay;
     }
 
     ESP_LOGI(TAG, "Install Dshot RMT encoder");
