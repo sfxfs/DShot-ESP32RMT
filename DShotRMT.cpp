@@ -98,7 +98,7 @@ DShotRMT::DShotRMT(gpio_num_t gpio, dshot_mode_t dshot_mode)
         .clk_src = RMT_CLK_SRC_DEFAULT, // a clock that can provide needed resolution
         .resolution_hz = DSHOT_RMT_RESOLUTION_HZ,
         .mem_block_symbols = MAX_BLOCKS,
-        .trans_queue_depth = 2, // set the number of transactions that can be pending in the background
+        .trans_queue_depth = 1, // set the number of transactions that can be pending in the background
         .intr_priority = 1,
         .flags = {
             .invert_out = is_bidirectional,
@@ -117,6 +117,9 @@ DShotRMT::DShotRMT(gpio_num_t gpio, dshot_mode_t dshot_mode)
     }
     tx_config = {
         .loop_count = 0,
+        .flags = {
+            .queue_nonblocking = true,
+        },
     };
 
     // Initialize structs
@@ -182,7 +185,7 @@ void DShotRMT::sendThrottle(uint16_t throttle_value)
     send(throttle_value);
 }
 
-uint32_t IRAM_ATTR DShotRMT::getErpm()
+uint32_t DShotRMT::getErpm()
 {
     if (!is_bidirectional)
         return INVALID_TELEMETRY_VALUE;
@@ -238,7 +241,7 @@ esp_err_t DShotRMT::waitForErpm(uint32_t &erpm)
     return ESP_ERR_TIMEOUT;
 }
 
-void IRAM_ATTR DShotRMT::send(uint16_t value)
+void DShotRMT::send(uint16_t value)
 {
     if (!enabled)
         return;
@@ -400,7 +403,7 @@ uint32_t IRAM_ATTR DShotRMT::extractTelemetryGcr(rmt_symbol_word_t *rmt_symbols,
  * @param value 20-bit GCR value
  * @return uint32_t 12-bit eRPM Data
  */
-uint32_t IRAM_ATTR DShotRMT::convertGcrToErpmData(uint32_t value)
+uint32_t DShotRMT::convertGcrToErpmData(uint32_t value)
 {
     if (!value)
     {
@@ -443,7 +446,7 @@ uint32_t IRAM_ATTR DShotRMT::convertGcrToErpmData(uint32_t value)
  * @param value 12-bit eRPM Data
  * @return uint32_t
  */
-uint32_t IRAM_ATTR DShotRMT::convertErpmDataToErpmPeriod(uint32_t value)
+uint32_t DShotRMT::convertErpmDataToErpmPeriod(uint32_t value)
 {
     if (!value || value == INVALID_TELEMETRY_VALUE)
     {

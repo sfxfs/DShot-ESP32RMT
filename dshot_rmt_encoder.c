@@ -1,6 +1,7 @@
 #include "dshot_rmt_encoder.h"
 
 #include <esp_check.h>
+#include <esp_attr.h>
 
 static const char *TAG = "dshot_encoder";
 
@@ -32,7 +33,7 @@ typedef struct
     bool bidirectional;
 } dshot_rmt_encoder_t;
 
-static void make_dshot_frame(dshot_frame_t *frame, uint16_t throttle, bool telemetry, bool bidirectional)
+static void IRAM_ATTR make_dshot_frame(dshot_frame_t *frame, uint16_t throttle, bool telemetry, bool bidirectional)
 {
     frame->throttle = throttle;
     frame->telemetry = telemetry;
@@ -64,7 +65,7 @@ static void make_dshot_frame(dshot_frame_t *frame, uint16_t throttle, bool telem
     frame->val = ((val & 0xFF) << 8) | ((val & 0xFF00) >> 8);
 }
 
-static size_t rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle_t channel,
+static size_t IRAM_ATTR rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle_t channel,
                                    const void *primary_data, size_t data_size, rmt_encode_state_t *ret_state)
 {
     dshot_rmt_encoder_t *dshot_encoder = __containerof(encoder, dshot_rmt_encoder_t, base);
